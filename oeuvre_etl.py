@@ -4,7 +4,7 @@ import pandas as pd
 
 from openalexextract.FrameMaker import FrameMaker
 from utils.dbUtils import dbUtil
-from utils.profile_run import profile_run
+
 from utils.time_run import time_run
 
 

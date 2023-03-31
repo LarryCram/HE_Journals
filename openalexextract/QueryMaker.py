@@ -44,13 +44,15 @@ class QueryMaker(object):
 
     def validity_check(self, entity=None, filtre=None, select=None):
 
-        # print(f'validity_check: {entity = } {filtre = } {select = }')
+        print(f'validity_check: {entity = } {filtre = } {select = }')
+        print(f'{set(select) = }')
+        print(f'{set(ex.fields[entity]) = }')
         if entity not in ex.config['entities']:
-            raise ValueError(f'entity {entity} not in list of OpenAlex entities!')
+            raise ValueError(f'entity {entity = } not in list of OpenAlex entities!')
         if filtre and not isinstance(filtre, (dict,)):
-            raise ValueError(f'filtre {filtre} is not a dictionary!')
+            raise ValueError(f'filtre {filtre = } is not a dictionary!')
         if select and not set(select).issubset(set(ex.fields[entity])):
-            raise ValueError(f'select list {select} is not in list of OpenAlex select fields!')
+            raise ValueError(f'select list {select = } is not in list of OpenAlex select fields!')
         if select and 'id' not in select:
-            raise ValueError(f'select list {select} must include "id" element')
+            raise ValueError(f'select list {select = } must include "id" element')
         return True

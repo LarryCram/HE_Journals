@@ -1,3 +1,10 @@
 tomli~=2.0.1
 BeneDict~=0.3.2
 diskcache>=5.0.0
+pandas~=1.5.3
+requests~=2.28.2
+toml~=0.10.2
+pyaltmetric~=0.2.0
+networkx~=3.0
+matplotlib~=3.7.1
+numpy~=1.24.2
