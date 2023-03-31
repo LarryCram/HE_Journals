@@ -1,0 +1,3 @@
+tomli~=2.0.1
+BeneDict~=0.3.2
+diskcache>=5.0.0

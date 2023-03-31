@@ -1,0 +1,4 @@
+oax_url = 'https://api.openalex.org/'
+user_email = 'Lawrence.Cram@anu.edu.au'
+oax_cache = '.\data\.oax_cache'
+entities = ['works', 'authors', 'institutions', 'sources', 'concepts', 'publishers']

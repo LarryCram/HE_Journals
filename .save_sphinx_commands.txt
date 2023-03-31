@@ -1,0 +1,7 @@
+sphinx-quickstart
+sphinx-apidoc --force --separate --module-first -o source ..\poax ..\poax\\super*
+sphinx-build -b html -E source build
+sphinx-build -b latex -E source build
+
+pip install git+https://github.com/LarryCram/poax
+
