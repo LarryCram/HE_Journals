@@ -161,7 +161,7 @@ class FrameMaker(object):
             if '.' not in col_ext:
                 temp = temp.explode(col_ext)
                 temp = temp.join(pd.json_normalize(temp[col_ext])).drop(columns=col_ext)
-                temp = temp.rename(columns={'id': f'{col_ext}_id'})
+                temp = temp.rename(columns={'id': f'{col_ext}_id', 'display_name': f'{col_ext}_display_name'})
             else:
                 if col_ext not in list(temp.columns):
                     temp[col_ext] = pd.NA

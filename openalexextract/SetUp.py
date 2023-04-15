@@ -1,7 +1,7 @@
 import requests
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
-from diskcache import Cache
+import diskcache as dc
 
 import toml
 import tomli
@@ -28,8 +28,8 @@ class SetUp(object):
             cls._instance = object.__new__(cls)
             cls.per_page = '200'
             cls.config = cls.load_parameters()
-            cls.new_session()
-            cls.new_cache()
+            cls.open_session()
+            cls.open_cache()
             cls.fields = cls.load_fields()
             print(f'{cls.per_page = }')
             print(f'{cls.config = }')
@@ -42,7 +42,7 @@ class SetUp(object):
         pass
 
     @classmethod
-    def new_session(cls):
+    def open_session(cls):
         """
         New requests session with standard headers
         :return:
@@ -58,14 +58,13 @@ class SetUp(object):
         cls.session.mount(r'https://', adapter)
 
     @classmethod
-    def new_cache(cls):
+    def open_cache(cls):
         """
         Cache instance used ih this session
         :return:
         """
-        cls.cache = Cache(cls.config['oax_cache'])
-        print(f'CHECK CACHE ON OPENING: {cls.cache.check() = }')
-
+        cls.cache = dc.Index(cls.config['oax_cache'], size_limit=1_000_000_000_000)
+        # print(f'CHECK CACHE ON OPENING: {cls.cache.check() = }')
 
     @classmethod
     def load_parameters(cls):

@@ -103,19 +103,19 @@ class ProcessOeuvre:
         self.load_works_authorships()
         self.keep_articles()
         self.article_authors()
-        # self.extract_authors()
+        self.extract_authors()
         self.extract_oeuvres()
 
 
 @time_run
-@profile_run
+# @profile_run
 def main():
 
-    fm = FrameMaker()
     journal = 'HERD'
 
     po = ProcessOeuvre(journal=journal)
     po.oeuvre_runner()
+
 
 if __name__ == '__main__':
     main()

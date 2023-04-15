@@ -78,12 +78,13 @@ class Extractor(SetUp):
         except requests.exceptions.TooManyRedirects as e:
             print(f'too may redirects {e = } {qq = }')
             return None
-        response.raise_for_status()
+        if response.status_code not in [200, 404]:
+            response.raise_for_status()
         status_code = response.status_code
         # print(f'web retrieval {query = } {len(response.json()) = }')
         if status_code not in [200, ]:
-            raise OSError(f'web retrieval failed {response.status_code = } {response.request.headers = }\n'
-                          f'{qq = }')
+            print(f'web retrieval failed {response.status_code = } {response.request.headers = } {qq = }')
+            return None
         try:
             return response.json()
         except ValueError as e:
