@@ -20,7 +20,7 @@ class ProcessJournal:
         self.db = dbUtil(db_name=f'{self.data_dir}/.db/{journal}')
 
     def process_journal_runner(self):
-        self.extract_works()
+        # self.extract_works()
         self.extract_citers()
 
     def extract_works(self):

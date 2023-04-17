@@ -1,6 +1,6 @@
 import os
 
-from collections import Counter
+from collections import Counter, defaultdict
 from utils.dbUtils import dbUtil
 from utils.time_run import time_run
 
@@ -32,6 +32,8 @@ class OeuvreSummary:
     def oeuvre_summary_runner(self):
         self.load_journal()
         self.load_oeuvre()
+        self.synonym_detection()
+
         self.homonym_detection()
         self.oeuvre_corpus_statistics()
         self.oeuvre_concepts_inverse_doc_freq()
@@ -68,6 +70,46 @@ class OeuvreSummary:
         print(f'{c.total() = }\n{c.most_common(10) = }\n{c.most_common()[:-11:-1] = }')
         v = Counter(sorted(c.values()))
         print(f'{v.total() = }\n{v.most_common(10) = }\n{v.most_common()[:-11:-1] = }')
+
+    def synonym_detection(self):
+        self.synonym_detection_full_name()
+        self.synonym_detection_std_name()
+
+    def synonym_detection_full_name(self):
+        seeker = defaultdict(set)
+        for name, author_id in zip(self.oeuvre_works.author_display_name,
+                                   self.oeuvre_works.author_id):
+                                   # self.oeuvre_works.institutions_display_name):
+            if not isinstance(name, str):
+                continue
+            seeker[name].add(author_id)
+        synonym_list = []
+        for j, (k, v) in enumerate(seeker.items()):
+            synonym_list.append([k] + list(v))
+            if j % 100 == 0:
+                print(j, k, v, list(v), [k] + list(v))
+        print(synonym_list[:4])
+        synonym_df = pd.DataFrame(synonym_list,
+                                  columns=['display_name', 'author_id_0', 'author_id_1', 'author_id_2'])
+        self.db.to_db(df=synonym_df, table_name='synonyms')
+        self.synonym_detection_analysis_std_name(synonym_df=synonym_df)
+
+    def synonym_detection_analysis_std_name(self, synonym_df=None):
+        print(f'{synonym_df.shape = }\n{synonym_df.head()}')
+        synonym_ = defaultdict(set)
+        for name, author_id in zip(synonym_df.display_name, synonym_df.author_id_0):
+            if " " in name:
+                first, last = name.rsplit(" ", maxsplit=1)
+                synonym_[f'{first.lower()[:1]}_{last.lower()}'].add((author_id, name))
+        synonym_list = []
+        for k, v in synonym_.items():
+            if len(v) > 1:
+                print(k, v, ['| '.join([n, i]) for n, i in v])
+                synonym_list.append([k] + ['| '.join([n, i]) for n, i in v])
+        synonym_df_ = pd.DataFrame(synonym_list, columns=['display_name', 'author_id_0', 'author_id_1', 'author_id_2'])
+        print(synonym_df_.head())
+        self.db.to_db(df=synonym_df_, table_name='potential_synonyms')
+        exit(66)
 
     def homonym_detection(self):
         reject_list = []

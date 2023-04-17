@@ -23,14 +23,24 @@ class ProcessOeuvre:
             raise SystemExit(f'data directory does not exist {self.data_dir}')
         self.db = dbUtil(db_name=f'{self.data_dir}/.db/{journal}')
 
-
     def load_works_authorships(self):
         self.works = self.db.read_db(table_name='works')
         self.authorships = (self.db.read_db(table_name='authorships')
                             .drop(columns='index'))
 
     def keep_articles(self):
-        self.articles = self.works.dropna(subset=['doi', 'abstract'])
+        temp = self.works.loc[:, ['works_id', 'doi', 'abstract', 'biblio_first_page', 'biblio_last_page']]
+        mask = []
+        for row in temp.itertuples():
+            first, last = (row.biblio_first_page, row.biblio_last_page)
+            page_length = 0
+            if isinstance(first, str) and isinstance(last, str) and first.isdigit() and last.isdigit():
+                page_length = int(last) - int(first)
+            if isinstance(row.abstract, str) or page_length > 5:
+                mask.append(True)
+            else:
+                mask.append(False)
+        self.articles = self.works[mask]
         self.db.to_db(df=self.articles, table_name='articles')
         self.not_articles = self.works[~self.works.index.isin(self.articles.index)]
         self.db.to_db(df=self.not_articles, table_name='not_articles')
@@ -38,13 +48,10 @@ class ProcessOeuvre:
     def article_authors(self):
         self.article_authorships = self.authorships[self.authorships.works_id.isin(self.articles.works_id)]
         author_list = [a for a in self.article_authorships.author_id if not isinstance(a, type(pd.NA))]
-        self.author_list = sorted(list(set(author_list)))[:1024]
-        self.author_list = [i for i in self.author_list if i != 'https://openalex.org/A2035216382']
-        # print(len(self.author_list))
-        # print(self.author_list[:8])
+        self.author_list = sorted(list(set(author_list)))
+        # self.author_list = [i for i in self.author_list if i != 'https://openalex.org/A2035216382']
 
     def extract_authors(self):
-
         from collections import defaultdict
         fm = FrameMaker()
         entity = 'authors'
@@ -72,13 +79,11 @@ class ProcessOeuvre:
             self.db.to_db(df=df, table_name=table_name)
 
     def extract_oeuvres(self):
-
         from collections import defaultdict
         fm = FrameMaker()
         entity = 'works'
         collect_all = defaultdict(list)
         for j, author in enumerate(self.author_list):
-
             fm.frame_maker(entity={entity: None},
                            filtre={'author.id': author},
                            select=['id', 'doi', 'display_name',
@@ -96,7 +101,13 @@ class ProcessOeuvre:
         for k, v in collect_all.items():
             df = pd.concat(v)
             table_name = f'oeuvre_{k}'
-            print(f'writing oeuvres to {self.journal}.db  {table_name = } {df.shape = } {df.columns = }\n{df.head()}')
+            if table_name == 'oeuvre_locations':
+                df = df.drop(columns=['source_host_organization_lineage'])
+                print(f'writing oeuvres to {self.journal}.db  {table_name = } {df.shape = } {df.columns = }'
+                      f'\n{df.head()}\ndf.info()')
+            else:
+                print(f'writing oeuvres to {self.journal}.db  {table_name = } {df.shape = } {df.columns = }'
+                      f'\n{df.head()}\n{df.info()}')
             self.db.to_db(df=df, table_name=table_name)
 
     def oeuvre_runner(self):

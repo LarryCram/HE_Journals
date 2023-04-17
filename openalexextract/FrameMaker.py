@@ -164,9 +164,12 @@ class FrameMaker(object):
                 temp = temp.rename(columns={'id': f'{col_ext}_id', 'display_name': f'{col_ext}_display_name'})
             else:
                 if col_ext not in list(temp.columns):
+                    # print(f' 1. {col_ext = }')
                     temp[col_ext] = pd.NA
                 else:
+                    # print(f' 2. {col_ext = }\n{temp[col_ext]}')
                     temp[col_ext] = ['| '.join(v) if isinstance(v, list) else pd.NA for v in temp[col_ext]]
+                temp = temp.drop(columns='col_ext', errors='ignore')
 
         temp.columns = [c.replace('.', '_') for c in temp.columns]
         self.frame_dict[col] = temp
