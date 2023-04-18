@@ -7,6 +7,7 @@ from utils.dbUtils import dbUtil
 
 from utils.time_run import time_run
 
+pd.set_option('display.width', 2000)
 
 class ProcessOeuvre:
 
