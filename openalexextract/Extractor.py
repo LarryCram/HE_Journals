@@ -57,7 +57,7 @@ class Extractor(SetUp):
         """
         if cache_key not in list(self.cache):
             # [print(f'{cache_key = } {kk = }') for kk in sorted(list(self.cache))]
-            print(f'retrieve_from_cache - return None - key not found {cache_key = }')
+            # print(f'retrieve_from_cache - return None - key not found {cache_key = }')
             # exit(99)
             return None
         response = self.cache[cache_key]

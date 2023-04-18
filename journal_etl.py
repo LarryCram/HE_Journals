@@ -45,7 +45,9 @@ class ProcessJournal:
         print(works.head())
         entity = 'works'
         master_dict = defaultdict(list)
-        for work in list(works.works_id):
+        for j, work in enumerate(list(works.works_id)):
+            if j % 250 == 0:
+                print(f'{j = } -> {j}/{len(list(works.works_id))}')
             self.fm.frame_maker(entity={entity: None},
                                 filtre={'cites': work},
                                 select=['id', 'doi', 'display_name',

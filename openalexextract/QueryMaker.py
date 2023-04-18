@@ -44,9 +44,9 @@ class QueryMaker(object):
 
     def validity_check(self, entity=None, filtre=None, select=None):
 
-        print(f'validity_check: {entity = } {filtre = } {select = }')
-        print(f'{set(select) = }')
-        print(f'{set(ex.fields[entity]) = }')
+        # print(f'validity_check: {entity = } {filtre = } {select = }')
+        # print(f'{set(select) = }')
+        # print(f'{set(ex.fields[entity]) = }')
         if entity not in ex.config['entities']:
             raise ValueError(f'entity {entity = } not in list of OpenAlex entities!')
         if filtre and not isinstance(filtre, (dict,)):

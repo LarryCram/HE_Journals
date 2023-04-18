@@ -118,6 +118,8 @@ class ClusterSummary:
         cluster_time_series.plot('final_year', ['n_articles', 'n_authors'], kind='line')
         plt.xlabel('Final year')
         plt.tight_layout()
+        save_fig = rf".\plots\cluster_growth.png"
+        plt.savefig(save_fig)
         plt.show()
 
     def cluster_summary_runner(self):
