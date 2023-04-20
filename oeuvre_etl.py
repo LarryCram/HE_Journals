@@ -12,6 +12,7 @@ pd.set_option('display.width', 2000)
 class ProcessOeuvre:
 
     def __init__(self, journal=None):
+        self.referenced_works = None
         self.journal = journal
         self.author_list = None
         self.article_authorships = None
@@ -28,23 +29,28 @@ class ProcessOeuvre:
         self.works = self.db.read_db(table_name='works')
         self.authorships = (self.db.read_db(table_name='authorships')
                             .drop(columns='index'))
-
-    def keep_articles(self):
-        temp = self.works.loc[:, ['works_id', 'doi', 'abstract', 'biblio_first_page', 'biblio_last_page']]
-        mask = []
-        for row in temp.itertuples():
-            first, last = (row.biblio_first_page, row.biblio_last_page)
-            page_length = 0
-            if isinstance(first, str) and isinstance(last, str) and first.isdigit() and last.isdigit():
-                page_length = int(last) - int(first)
-            if isinstance(row.abstract, str) or page_length > 5:
-                mask.append(True)
-            else:
-                mask.append(False)
-        self.articles = self.works[mask]
-        self.db.to_db(df=self.articles, table_name='articles')
-        self.not_articles = self.works[~self.works.index.isin(self.articles.index)]
-        self.db.to_db(df=self.not_articles, table_name='not_articles')
+        self.referenced_works = self.db.read_db(table_name='referenced_works')
+    #
+    # def keep_articles(self):
+    #     temp = self.works.loc[:, ['works_id', 'doi', 'abstract', 'biblio_first_page', 'biblio_last_page']]
+    #     number_of_references = self.referenced_works.value_counts('works_id')
+    #     print(number_of_references)
+    #     mask = []
+    #     for row in temp.itertuples():
+    #         first, last = (row.biblio_first_page, row.biblio_last_page)
+    #         page_length = 0
+    #         if isinstance(first, str) and isinstance(last, str) and first.isdigit() and last.isdigit():
+    #             page_length = int(last) - int(first)
+    #         # if isinstance(row.abstract, str) or page_length > 5 or number_of_references[row[0]] > 1:
+    #         if page_length > 5 or number_of_references[row[0]] > 1:
+    #             mask.append(True)
+    #         else:
+    #             mask.append(False)
+    #     self.articles = self.works[mask]
+    #     self.db.to_db(df=self.articles, table_name='articles')
+    #     self.not_articles = self.works[~self.works.index.isin(self.articles.index)]
+    #     self.db.to_db(df=self.not_articles, table_name='not_articles')
+    #     exit(66)
 
     def article_authors(self):
         self.article_authorships = self.authorships[self.authorships.works_id.isin(self.articles.works_id)]
@@ -113,7 +119,7 @@ class ProcessOeuvre:
 
     def oeuvre_runner(self):
         self.load_works_authorships()
-        self.keep_articles()
+        # self.keep_articles()
         self.article_authors()
         self.extract_authors()
         self.extract_oeuvres()
