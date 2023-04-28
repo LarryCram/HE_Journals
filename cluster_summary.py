@@ -57,7 +57,7 @@ class ClusterSummary:
         B.add_nodes_from(author_nodes, bipartite=1)
         edges = list(zip(authorships.works_id, authorships.author_id))
         B.add_edges_from(edges)
-        print(f'{len(article_nodes) = } {len(author_nodes) = } {nx.number_connected_components(B) = }')
+        print(f'{len(article_nodes) = } {len(author_nodes) = } {len(edges) = } {nx.number_connected_components(B) = }')
         new_authorship = self.summarise_clusters(graph=B, authorship=authorships)
         self.db_clusters.to_db(df=new_authorship, table_name=f'clusters_{final_year}')
 
@@ -122,11 +122,30 @@ class ClusterSummary:
         plt.savefig(save_fig)
         plt.show()
 
+    def cluster_link_search(self):
+        for final_year in [2021, 2020, 2019, 2018]:
+            clusters = self.db_clusters.read_db(table_name=f'clusters_{final_year}')
+            whole = clusters.loc[clusters.cluster == 'C_0000', ['works_id', 'author_id']].copy()
+            largest_cc_ = len(whole)
+            print(f'{final_year = } {largest_cc_ = }')
+            for drop_work in set(whole.works_id.unique()):
+            # for drop_work in set(whole.author_id.unique()):
+                largest_cc = len(max(
+                    nx.connected_components(nx.from_pandas_edgelist(whole[whole.works_id != drop_work],
+                    # nx.connected_components(nx.from_pandas_edgelist(whole[whole.author_id != drop_work],
+                                                                    source='works_id', target='author_id'))
+                    , key=len))
+                if largest_cc < largest_cc_:
+                    print(drop_work, largest_cc, len(whole) - largest_cc)
+                    largest_cc_ = largest_cc
+        exit(44)
+
     def cluster_summary_runner(self):
+        self.cluster_link_search()
+        exit(11)
         self.loader()
         for final_year in range(2023, 1984, -1):
             self.extract_clusters(final_year=final_year)
-
         cols = ['final_year', 'cluster', 'total nodes', 'n_authors', 'n_articles']
         cluster_time_series = pd.DataFrame(self.cluster_time_series, columns=cols)
         print(cluster_time_series)

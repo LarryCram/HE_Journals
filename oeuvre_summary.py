@@ -29,17 +29,6 @@ class OeuvreSummary:
             raise SystemExit(f'data directory does not exist {self.data_dir = } {os.getcwd() = }')
         self.db = dbUtil(db_name=f'{self.data_dir}/.db/{journal}')
 
-    def oeuvre_summary_runner(self):
-        self.load_journal()
-        self.load_oeuvre()
-        self.synonym_detection()
-
-        self.homonym_detection()
-        self.oeuvre_corpus_statistics()
-        self.oeuvre_concepts_inverse_doc_freq()
-        self.oeuvre_concepts_summary()
-        # self.oeuvre_author_processor()
-
     def load_journal(self):
         self.article = self.db.read_db(table_name='articles')[[
             'works_id', 'display_name', 'publication_year', 'cited_by_count']]
@@ -49,31 +38,52 @@ class OeuvreSummary:
         # self.authorships.dropna(subset=['author_id'], inplace=True)
         print(f'{self.authorships.shape = }\n{self.authorships.head()}')
         self.article_authorships = self.article.merge(self.authorships, left_on='works_id', right_on='works_id')
+        self.db.to_db(df=self.article_authorships, table_name='article_authorships')
         print(f'{self.article_authorships.shape = }\n{self.article_authorships.head()}')
 
     def load_oeuvre(self):
+        # extract oeuvre_works
         self.oeuvre_works = self.db.read_db(table_name='oeuvre_works')[[
-            'works_id', 'display_name', 'publication_year', 'cited_by_count']]
+            'works_id', 'display_name', 'publication_year', 'cited_by_count']].drop_duplicates(subset='works_id')
+        article_works_set = set(self.article.works_id.to_list())
+        self.oeuvre_works['is_journal'] = \
+            [work in article_works_set for work in self.oeuvre_works.works_id]
+        print(f'{self.oeuvre_works.shape = }\n{self.oeuvre_works.head()}')
+        # extract oeuvre_authorships
         self.oeuvre_authorships = self.db.read_db(table_name='oeuvre_authorships')[[
             'works_id', 'author_id', 'author_display_name',
             'institutions_id', 'institutions_display_name', 'country_code']]
-        self.oeuvre_authorships = self.oeuvre_authorships[
-            self.oeuvre_authorships.author_id.isin(self.authorships.author_id)]
-        self.oeuvre_works = self.oeuvre_works.merge(self.oeuvre_authorships, left_on='works_id', right_on='works_id').\
-            sort_values('publication_year')
-        self.oeuvre_works['size'] = self.oeuvre_works.groupby('author_id').transform('size')
+        # drop authorships where the author is not in the journal article
         print(f'{self.oeuvre_authorships.shape = }\n{self.oeuvre_authorships.head()}')
+        journal_authors_set = set(self.authorships.author_id.to_list())
+        self.oeuvre_authorships = self.oeuvre_authorships[self.oeuvre_authorships.author_id.isin(journal_authors_set)]
+        # merge the oeuvre works/authorships
+        print(f'{self.oeuvre_authorships.shape = }\n{self.oeuvre_authorships.head()}')
+        self.oeuvre_works = self.oeuvre_authorships.set_index(['author_id', 'works_id'])\
+            .join(self.oeuvre_works.set_index('works_id'), how='left').reset_index()
+        self.oeuvre_works = self.oeuvre_works[['works_id', 'display_name', 'publication_year', 'cited_by_count',
+                                               'is_journal', 'author_id', 'author_display_name',
+                                               'institutions_id', 'institutions_display_name', 'country_code']].copy()
         print(f'{self.oeuvre_works.shape = }\n{self.oeuvre_works.head()}')
+        self.oeuvre_works['size'] = self.oeuvre_works.groupby('author_id').transform('size')
+        self.oeuvre_works['size_journal'] = self.oeuvre_works[['works_id', 'is_journal', 'author_id']]\
+            .drop_duplicates().groupby('author_id').is_journal.transform(lambda x: [1 for c in x if c].count(1))
+        print(f'{self.oeuvre_works.shape = }\n{self.oeuvre_works.head()}')
+        self.db.to_db(df=self.oeuvre_works,
+                      table_name='oeuvre_full', if_exists='replace')
 
     def oeuvre_corpus_statistics(self):
-        c = Counter(self.oeuvre_authorships.author_display_name)
-        print(f'{c.total() = }\n{c.most_common(10) = }\n{c.most_common()[:-11:-1] = }')
-        v = Counter(sorted(c.values()))
-        print(f'{v.total() = }\n{v.most_common(10) = }\n{v.most_common()[:-11:-1] = }')
-
-    def synonym_detection(self):
-        self.synonym_detection_full_name()
-        self.synonym_detection_std_name()
+        o = self.oeuvre_works[['works_id', 'author_id', 'author_display_name', 'publication_year', 'cited_by_count',
+                               'institutions_id', 'institutions_display_name']].sort_values('publication_year').copy()
+        o['works_per_author'] = o.groupby('author_id').works_id.transform('count')
+        o['earliest'] = o.groupby('author_id').publication_year.transform('min')
+        o['latest'] = o.groupby('author_id').publication_year.transform('max')
+        o['citations'] = o.groupby('author_id').cited_by_count.transform('sum')
+        o = o[['author_id', 'author_display_name', 'works_per_author', 'citations', 'earliest', 'latest']]\
+            .sort_values('works_per_author', ascending=False).drop_duplicates(subset=['author_id'])
+        o['publication_rate'] = [int(p/(l - e)) if l-e != 0 else pd.NA for p, e, l in zip(o.works_per_author, o.earliest, o.latest)]
+        print(f'{o.shape = }\n{o.head(16)}')
+        print(f'{len(o[o.works_per_author < 50]) = } {len(o) = } {len(o[o.publication_rate < 5]) = }')
 
     def synonym_detection_full_name(self):
         seeker = defaultdict(set)
@@ -89,8 +99,12 @@ class OeuvreSummary:
             if j % 100 == 0:
                 print(j, k, v, list(v), [k] + list(v))
         print(synonym_list[:4])
-        synonym_df = pd.DataFrame(synonym_list,
-                                  columns=['display_name', 'author_id_0', 'author_id_1', 'author_id_2'])
+        synonym_df = pd.DataFrame(synonym_list)
+        print(synonym_df.head())
+        print(synonym_df.columns)
+        print(synonym_df.shape)
+        synonym_df.columns = ['display_name'] + [f'author_id_{c}' for c in range(synonym_df.shape[1]-1)]
+        print(synonym_df.head())
         self.db.to_db(df=synonym_df, table_name='synonyms')
         self.synonym_detection_analysis_std_name(synonym_df=synonym_df)
 
@@ -106,10 +120,10 @@ class OeuvreSummary:
             if len(v) > 1:
                 print(k, v, ['| '.join([n, i]) for n, i in v])
                 synonym_list.append([k] + ['| '.join([n, i]) for n, i in v])
-        synonym_df_ = pd.DataFrame(synonym_list, columns=['display_name', 'author_id_0', 'author_id_1', 'author_id_2'])
+        synonym_df_ = pd.DataFrame(synonym_list)
+        synonym_df_.columns = synonym_df.columns
         print(synonym_df_.head())
         self.db.to_db(df=synonym_df_, table_name='potential_synonyms')
-        exit(66)
 
     def homonym_detection(self):
         reject_list = []
@@ -121,26 +135,35 @@ class OeuvreSummary:
             p_min, p_max = group['publication_year'].agg(['min', 'max']).to_list()
             duration = p_max - p_min
         # implausible mobility
-            mob_max = group.groupby(['publication_year']).institutions_id.nunique().max()
-        # implausible productivity
-            prod_max = group.groupby(['publication_year']).works_id.nunique().max()
+            mob_max = group.institutions_id.nunique()
+            mob_max = 0
+        # implausible production
+            prod_max = group.works_id.nunique()
+        # implausible annual production
+            rate = group.works_id.nunique()/duration if duration > 1 else 0
         # assemble rules
-            if duration > 70 or mob_max > 10 or prod_max > 100:
+            if duration > 70 or mob_max > 100 or prod_max > 1000 or rate > 50:
                 reject = True
             else:
                 reject = False
             # print(f'{author_id = } {duration = } {mob_max = } {prod_max = } {reject = }')
-            reject_list.append([author_id, author, duration, mob_max, prod_max, reject])
+            journal_count = self.article_authorships[self.article_authorships.author_id == author_id]\
+                .drop_duplicates(subset='works_id').works_id.count()
+            reject_list.append([author_id, author, duration, mob_max, prod_max, rate, journal_count, reject])
 
         rejecter = pd.DataFrame(reject_list, columns=['author_id', 'display_name',
-                                                      'duration', 'mob_max', 'prod_max', 'reject'])
+                                                      'duration', 'mob_max', 'prod_max', 'rate',
+                                                      'journal_count', 'reject'])
         print(f'{rejecter.shape = } '
               f'{rejecter.duration.max() = } '
               f'{rejecter.mob_max.max() = } '
-              f'{rejecter.prod_max.max() = } {rejecter.author_id.count() = } '
+              f'{rejecter.prod_max.max() = },'
+              f'{rejecter.rate.max() = } {rejecter.author_id.count() = } '
               f'{rejecter[rejecter.reject].count().to_list() = }'
               f' \n{rejecter.sort_values("duration", ascending=False).head()}')
         self.db.to_db(df=rejecter, table_name='homonym_rejecter', if_exists='replace')
+
+
 
     def oeuvre_author_processor(self):
         oeuvre_list = []
@@ -157,6 +180,7 @@ class OeuvreSummary:
             #     break
         oeuvre = pd.DataFrame(oeuvre_list, columns=['author_id', 'works_id',
                                                     'n_authors', 'n_institutions', 'n_countries',
+                                                    'authors', 'institutions', 'countries'
                                                     'academic_age', 'career_stage'])
         print(f'oeuvre_summary {oeuvre.shape = }\n{oeuvre.head()}')
         self.db.to_db(df=oeuvre, table_name='oeuvre_summary')
@@ -175,8 +199,12 @@ class OeuvreSummary:
             n_authors = group.author_id.nunique()
             n_institutions = group.institutions_id.nunique()
             n_countries = group.country_code.nunique()
+            authors = group.author_display_name.to_list().join('| ')
+            institutions = group.institutions_display_name.to_list().join('| ')
+            countries = group.country_code.to_list().join('| ')
             # print(f'{n_authors = } {n_institutions = } {n_countries = } {academic_age = }')
             oeuvre_list.append([author_id, works_id, n_authors, n_institutions, n_countries,
+                                authors, institutions, countries,
                                 academic_age, self.career_stage(academic_age)])
             # exit(99)
         return oeuvre_list
@@ -235,20 +263,29 @@ class OeuvreSummary:
             self.education_expertise(df=concepts_time_series)
             if j > 32:
                 break
-
         expertise = pd.DataFrame(expertise_, columns=['author_id', 'concept', 'score', 'concept_tfidf', 'score_tfidf'])
         print(f'{expertise.shape = }/n{expertise.head(32)}')
-        exit(23)
 
     def education_expertise(self, df=None):
         print(df[df.concepts_display_name.str.contains(r'education|pedagogy|teach|student', case=False)].head(32))
         return df[df.concepts_display_name.str.contains(r'education|pedagogy|teach|student', case=False)]
 
+    def oeuvre_summary_runner(self):
+        self.load_journal()
+        self.load_oeuvre()
+        self.oeuvre_corpus_statistics()
+        self.homonym_detection()
+
+        # self.synonym_detection_full_name()
+
+        # self.oeuvre_concepts_inverse_doc_freq()
+        # self.oeuvre_concepts_summary()
+        # self.oeuvre_author_processor()
+
 
 @time_run
 # @profile_run
 def main():
-
     oeuvres = OeuvreSummary(journal='HERD')
     oeuvres.oeuvre_summary_runner()
 

@@ -70,9 +70,16 @@ class CitationSummary:
             print(j, edge.source, edge.target, edge)
             if j > 4:
                 break
-        df = pd.DataFrame([[h.vs[edge.source]['name'], h.vs[edge.target]['name']]
-                          for edge in h.es], columns=['source', 'target'])
-        print(f'{df.shape = } {df.drop_duplicates().shape = }\n{df.head()}')
+        df = pd.DataFrame([[edge.source, h.vs[edge.source]['name'],
+                            edge.target, h.vs[edge.target]['name']]
+                          for edge in h.es], columns=['source', 'source_id', 'target', 'target_id'])
+        print(f'{df.shape = } {df.drop_duplicates().dropna().shape = }\n{df.head()}')
+        s1 = set(df.source.to_list())
+        s2 = set(df.target.to_list())
+        print(f'distinct sources: {len(s1) = }')
+        print(f'distinct targets: {len(s2) = }')
+        s1.update(s2)
+        print(f'distinct sources or targets: {len(s1) = }')
 
         # n_comms = 50
         # partition = la.ModularityVertexPartition(h)
@@ -81,23 +88,19 @@ class CitationSummary:
 
         partition = la.find_partition(h, la.ModularityVertexPartition)
         p_dict = {k: j for j, p in enumerate(partition) for k in p if isinstance(k, int)}
-        df['partition'] = p_dict
-        print(f'{df.shape = } {len(p_dict) = }\n{df.head()}')
-        [print(p, len(group)) for p, group in df.groupby('partition')]
-        exit(44)
+        # print(p_dict)
 
-        h.write_graphml(rf'{self.data_dir}\leiden_communities.graphml')
-        ig.plot(partition,
-                vertex_size=2,
-                palette=None,
-                # vertex_color=['blue', 'red', 'green', 'yellow'],
-                # vertex_label=['first', 'second', 'third', 'fourth'],
-                # vertex_label=[h.vs(n)['name'] for p in list(partition) for n in p],
-                # edge_width=[1, 4],
-                # edge_color=['black', 'grey'],
-                layout='kamada_kawai',
-                target=rf'{self.data_dir}\leiden_communities.pdf',
-                )
+        # def choose(a, b):
+        #     if a:
+        #         return a
+        #     return b
+        df['partition'] = [p_dict[v1] if p_dict.get(v1, False) else p_dict.get(v2, False)
+                           for v1, v2 in zip(df.source, df.target)]
+        df = df.reset_index()
+        print(f'{df.shape = } {len(p_dict) = }\n{df.head()}')
+        print(f'{df.value_counts("partition").to_frame().reset_index().astype({"partition": int})}')
+        print(f'{df.value_counts("partition").to_frame()["count"].sum() = }')
+        self.db.to_db(df=df, table_name='communities')
 
     def graph_info(self, g):
         print("Number of vertices:", g.vcount())

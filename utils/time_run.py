@@ -8,7 +8,6 @@ def time_run(func):
     import datetime as dt
 
     def wrapper(*args, **kwargs):
-        print(f"{func} called with {args = } and {kwargs = }")
         # Time stamp
         time_now = dt.datetime.now()
         time_start = time_now

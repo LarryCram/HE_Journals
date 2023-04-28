@@ -44,12 +44,23 @@ class JournalSummary:
         print(f'for {self.journal = }: with articles {article.shape = }\n{article.head()}')
         self.article = article
 
+
     def load_authorships_from_journal(self):
         authorship = self.db_journal.read_db(table_name='authorships') \
-            .loc[:, ['works_id', 'author_id', 'institutions_id', 'country_code']]
+                .loc[:, ['works_id', 'author_id', 'author_display_name', 'institutions_id', 'country_code']]
+        self.db_journal.to_db(df=authorship, table_name='authorships_b4_replace_synonyms')
         self.article_list = self.article.works_id.to_list()
         authorship = authorship[[works_id in self.article_list for works_id in authorship.works_id]]
         print(f'for {self.journal = }: number of authorships {authorship.shape[0] = }\n{authorship.head()}')
+        synonyms = self.db_journal.read_db(table_name='synonyms')
+        cols = [f'author_id_{i}' for i in range(1, 4)]
+        print(cols)
+        syn_dict = {} | {i: row.author_id_0 for row in synonyms.itertuples() for i in row[3:]}
+        print(f'{authorship.author_id.nunique() = }')
+        authorship['author_id'] = authorship['author_id'].map(syn_dict)
+        print(f'for {self.journal = }: with articles {authorship.shape = }\n{authorship.head()}')
+        print(f'{authorship.author_id.nunique() = }')
+        self.db_journal.to_db(df=authorship, table_name='authorships')
         self.authorship = authorship
 
     def load_references_from_journal(self):
@@ -153,8 +164,38 @@ class JournalSummary:
         plt.close(fig)
         return
 
+    def journal_synonyms(self):
+        # get authors who appear more than once
+        a = self.authorship
+        a['counts'] = a.groupby('author_display_name').author_id.transform('nunique')
+        a = a[a.counts > 1].drop_duplicates(subset=['author_id', 'author_display_name'])
+        d = {author_name: author_id for author_name, author_id in zip(a.author_display_name, a.author_id)}
+        a['author_id'] = a.author_display_name.map(d)
+        a = a.sort_values('author_display_name')
+        print(f'SYNONYMS: {a.shape = } {a.author_display_name.nunique() = }\n{a.head(64)}')
+        self.authorship = a
+
+    def journal_homonyms(self):
+        # get authors who appear more than once with different institutions
+        a = self.authorship.dropna(subset=['institutions_id']).copy()
+        print(a.head())
+        a['counts'] = a.drop_duplicates(subset=['author_id', 'institutions_id'])\
+            .groupby('author_display_name').institutions_id.transform('nunique')
+        print(a.head())
+        a = a[a.counts > 1].sort_values('author_display_name')
+        print(f'HOMONYMS: {a.shape = } {a.author_display_name.nunique() = }\n{a.head(128)}')
+        # a['number_of_articles'] = a.groupby('author_display_name').author_id.transform('count')
+        # a = a[a.number_of_articles > 1].sort_values('author_display_name')
+        # print(f'{a.shape = } {a.author_display_name.nunique() = }\n{a.head(32)}')
+
+        # of these get ones that have different ror
+
+
+
     def journal_summary_runner(self):
         self.load_journal_from_db()
+        self.journal_synonyms()
+        self.journal_homonyms()
         self.time_series_runner()
 
 

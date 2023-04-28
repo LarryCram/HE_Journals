@@ -49,8 +49,7 @@ class ProcessJournal:
                 page_length = int(last) - int(first)
             # if isinstance(row.abstract, str) or page_length > 5 or number_of_references[row[0]] > 1:
             # print(row, number_of_references[row.works_id])
-            logic = (isinstance(row.abstract, str) and (page_length > 5 or number_of_references[row.works_id] > 1)) \
-                    or (page_length > 5 and number_of_references[row.works_id] > 1)
+            logic = page_length > 5 or (isinstance(row.abstract, str) or (number_of_references[row.works_id] > 1))
             if logic:
                 mask.append(True)
             else:
@@ -59,7 +58,6 @@ class ProcessJournal:
         self.db.to_db(df=articles, table_name='articles')
         not_articles = works[~works.index.isin(articles.index)]
         self.db.to_db(df=not_articles, table_name='not_articles')
-        exit(66)
 
     def extract_citers(self):
         from collections import defaultdict
