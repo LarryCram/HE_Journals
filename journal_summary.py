@@ -1,6 +1,3 @@
-import networkx as nx
-from collections import defaultdict
-
 from utils.dbUtils import dbUtil
 from utils.time_run import time_run
 from utils.dataFileManager import DataFileManager
@@ -36,48 +33,41 @@ class JournalSummary:
             merge(self.reference, on='works_id').merge(self.altmetric, on='doi')
 
     def load_article_from_journal(self):
-        article = self.db_journal.read_db(table_name='articles') \
+        self.article = self.db_journal.read_db(table_name='articles') \
             .loc[:, ['works_id', 'doi', 'publication_year', 'cited_by_count',
                      'display_name', 'biblio_first_page', 'biblio_last_page', 'abstract']]
-        article['doi'] = [doi.rstrip().replace(r"https://doi.org/", "") if isinstance(doi, (str,)) else pd.NA
-                          for doi in article.doi]
-        print(f'for {self.journal = }: with articles {article.shape = }\n{article.head()}')
-        self.article = article
-
+        self.article['doi'] = [doi.rstrip().replace(r"https://doi.org/", "") if isinstance(doi, (str,)) else pd.NA
+                          for doi in self.article.doi]
+        print(f'for {self.journal = }: with articles {self.article.shape = }\n{self.article.head()}')
 
     def load_authorships_from_journal(self):
-        authorship = self.db_journal.read_db(table_name='authorships') \
-                .loc[:, ['works_id', 'author_id', 'author_display_name', 'institutions_id', 'country_code']]
-        self.db_journal.to_db(df=authorship, table_name='authorships_b4_replace_synonyms')
+        self.authorship = self.db_journal.read_db(table_name='authorships')
+        self.db_journal.to_db(df=self.authorship, table_name='authorships_full_backup')
+        self.authorship = self.authorship.loc[:, ['works_id', 'author_id', 'author_display_name',
+                                                  'institutions_id', 'institutions_display_name', 'country_code']]
         self.article_list = self.article.works_id.to_list()
-        authorship = authorship[[works_id in self.article_list for works_id in authorship.works_id]]
-        print(f'for {self.journal = }: number of authorships {authorship.shape[0] = }\n{authorship.head()}')
+        self.authorship = self.authorship[[works_id in self.article_list for works_id in self.authorship.works_id]]
         synonyms = self.db_journal.read_db(table_name='synonyms')
-        cols = [f'author_id_{i}' for i in range(1, 4)]
-        print(cols)
         syn_dict = {} | {i: row.author_id_0 for row in synonyms.itertuples() for i in row[3:]}
-        print(f'{authorship.author_id.nunique() = }')
-        authorship['author_id'] = authorship['author_id'].map(syn_dict)
-        print(f'for {self.journal = }: with articles {authorship.shape = }\n{authorship.head()}')
-        print(f'{authorship.author_id.nunique() = }')
-        self.db_journal.to_db(df=authorship, table_name='authorships')
-        self.authorship = authorship
+        self.authorship['author_id'] = self.authorship['author_id'].map(syn_dict)
+        print(f'for {self.journal = }: '
+              f'number of authorships {self.authorship.shape = } '
+              f'number of unique authors {self.authorship.author_id.nunique() = }\n{self.authorship.head()}')
+        self.db_journal.to_db(df=self.authorship, table_name='authorships')
 
     def load_references_from_journal(self):
-        reference = self.db_journal.read_db(table_name='referenced_works')
-        reference = reference[[works_id in self.article_list for works_id in reference.works_id]]
-        reference = reference.groupby('works_id').count().reset_index().\
+        self.reference = self.db_journal.read_db(table_name='referenced_works')
+        self.reference = self.reference[[works_id in self.article_list for works_id in self.reference.works_id]]
+        self.reference = self.reference.groupby('works_id').count().reset_index().\
             rename(columns={'referenced_works': 'reference_count'})
-        print(f'for {self.journal = } {reference.shape = }\n{reference.head()}')
-        self.reference = reference
+        print(f'for {self.journal = } {self.reference.shape = }\n{self.reference.head()}')
 
     def load_altmetrics_from_journal(self):
-        altmetric = self.db_journal.read_db(table_name='altmetrics').loc[:, ['doi', 'score']]
-        altmetric = altmetric.rename(columns={'score': 'alt_score'})
-        altmetric['alt_score'] = [float(score) if isinstance(score, (float, str,)) else pd.NA for score in
-                                  altmetric.alt_score]
-        print(f'for {self.journal = } {altmetric.shape = }\n{altmetric.head()}')
-        self.altmetric = altmetric
+        self.altmetric = self.db_journal.read_db(table_name='altmetrics').loc[:, ['doi', 'score']]
+        self.altmetric = self.altmetric.rename(columns={'score': 'alt_score'})
+        self.altmetric['alt_score'] = [float(score) if isinstance(score, (float, str,)) else pd.NA
+                                       for score in self.altmetric.alt_score]
+        print(f'for {self.journal = } {self.altmetric.shape = }\n{self.altmetric.head()}')
 
     def time_series_runner(self, journal=None):
         """
@@ -125,7 +115,6 @@ class JournalSummary:
         return df.fillna(0)
 
     def plot_annual(self, journal=None, df=None):
-
         plt.style.use('science')
         fig, axes = plt.subplots(9, 1, sharex='all', figsize=(6, 8))
         axes[0].set_title(f'Number of articles per year ({self.journal})', fontsize='medium', pad=2.0)
@@ -164,38 +153,8 @@ class JournalSummary:
         plt.close(fig)
         return
 
-    def journal_synonyms(self):
-        # get authors who appear more than once
-        a = self.authorship
-        a['counts'] = a.groupby('author_display_name').author_id.transform('nunique')
-        a = a[a.counts > 1].drop_duplicates(subset=['author_id', 'author_display_name'])
-        d = {author_name: author_id for author_name, author_id in zip(a.author_display_name, a.author_id)}
-        a['author_id'] = a.author_display_name.map(d)
-        a = a.sort_values('author_display_name')
-        print(f'SYNONYMS: {a.shape = } {a.author_display_name.nunique() = }\n{a.head(64)}')
-        self.authorship = a
-
-    def journal_homonyms(self):
-        # get authors who appear more than once with different institutions
-        a = self.authorship.dropna(subset=['institutions_id']).copy()
-        print(a.head())
-        a['counts'] = a.drop_duplicates(subset=['author_id', 'institutions_id'])\
-            .groupby('author_display_name').institutions_id.transform('nunique')
-        print(a.head())
-        a = a[a.counts > 1].sort_values('author_display_name')
-        print(f'HOMONYMS: {a.shape = } {a.author_display_name.nunique() = }\n{a.head(128)}')
-        # a['number_of_articles'] = a.groupby('author_display_name').author_id.transform('count')
-        # a = a[a.number_of_articles > 1].sort_values('author_display_name')
-        # print(f'{a.shape = } {a.author_display_name.nunique() = }\n{a.head(32)}')
-
-        # of these get ones that have different ror
-
-
-
     def journal_summary_runner(self):
         self.load_journal_from_db()
-        self.journal_synonyms()
-        self.journal_homonyms()
         self.time_series_runner()
 
 

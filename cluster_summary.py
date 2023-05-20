@@ -138,7 +138,6 @@ class ClusterSummary:
                 if largest_cc < largest_cc_:
                     print(drop_work, largest_cc, len(whole) - largest_cc)
                     largest_cc_ = largest_cc
-        exit(44)
 
     def cluster_summary_runner(self):
         self.cluster_link_search()
