@@ -115,7 +115,7 @@ class ClusterSummary:
         cluster_time_series.rename(columns={'final_year': 'Final year',
                                             'n_authors': 'Number of authors',
                                             'n_articles': 'Number of articles'})
-        cluster_time_series.plot('final_year', ['n_articles', 'n_authors'], kind='line')
+        cluster_time_series.plot('final_year', ['n_articles', 'n_authors'], kind='line', style='.-')
         plt.xlabel('Final year')
         plt.tight_layout()
         save_fig = rf".\plots\cluster_growth.png"
@@ -141,7 +141,6 @@ class ClusterSummary:
 
     def cluster_summary_runner(self):
         self.cluster_link_search()
-        exit(11)
         self.loader()
         for final_year in range(2023, 1984, -1):
             self.extract_clusters(final_year=final_year)

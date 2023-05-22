@@ -1,7 +1,6 @@
 import os
 
 import pandas as pd
-import numpy as np
 import igraph as ig
 import leidenalg as la
 
@@ -9,14 +8,15 @@ from utils.dbUtils import dbUtil
 from utils.time_run import time_run
 from utils.profile_run import profile_run
 
-pd.set_option('display.max_rows', 500)
-pd.set_option('display.max_columns', 500)
-pd.set_option('display.width', 1000)
+pd.set_option('display.max_columns', None)
+pd.set_option('display.expand_frame_repr', False)
+pd.set_option('max_colwidth', 800)
 
 
 class CitationSummary:
 
     def __init__(self, journal=None):
+        self.partition_df = None
         self.citation_table = None
         self.articles = None
         self.cited = None
@@ -46,14 +46,16 @@ class CitationSummary:
             .rename(columns={'works_id': 'journal_id', 'referenced_works': 'cite_id'})
 
     def construct_citation_table(self):
+        print(self.cited.sort_values('journal_id').head())
+        print(self.citers.sort_values('journal_id').head())
         self.citation_table = pd.concat([self.citers, self.cited], axis=0)\
             .drop_duplicates()\
             .replace("https://openalex.org/", "", regex=True)
             # .sample(frac=0.1)
 
     def make_citation_graph(self):
-        print(f'{self.citation_table.shape = }')
-        g = ig.Graph.TupleList(self.citation_table.itertuples(index=False), directed=False, weights=False)
+        print(f'{self.citation_table.shape = }\n{self.citation_table.sort_values("journal_id").head()}')
+        g = ig.Graph.TupleList(self.citation_table.itertuples(index=False), directed=True, weights=False)
         df = pd.DataFrame([[g.vs[edge.source]['name'], g.vs[edge.target]['name']]
                           for edge in g.es], columns=['source', 'target'])
         print(f'{df.shape = }\n{df.head()}')
@@ -61,7 +63,6 @@ class CitationSummary:
         self.components_of_citation_graph(g)
 
     def components_of_citation_graph(self, g):
-        # [print(j, len(g.vs[cc])) for j, cc in enumerate(sorted(g.connected_components(mode='weak'), key=len, reverse=True))]
         self.clusters_of_citation_graph(g.connected_components(mode='strong').giant())
 
     def clusters_of_citation_graph(self, h):
@@ -88,38 +89,47 @@ class CitationSummary:
 
         partition = la.find_partition(h, la.ModularityVertexPartition)
         p_dict = {k: j for j, p in enumerate(partition) for k in p if isinstance(k, int)}
-        # print(p_dict)
-
-        # def choose(a, b):
-        #     if a:
-        #         return a
-        #     return b
         df['partition'] = [p_dict[v1] if p_dict.get(v1, False) else p_dict.get(v2, False)
                            for v1, v2 in zip(df.source, df.target)]
-        df = df.reset_index()
         print(f'{df.shape = } {len(p_dict) = }\n{df.head()}')
         print(f'{df.value_counts("partition").to_frame().reset_index().astype({"partition": int})}')
         print(f'{df.value_counts("partition").to_frame()["count"].sum() = }')
         self.db.to_db(df=df, table_name='communities')
+        self.partition_df = df.reset_index()
+        self.cluster_labels()
 
     def graph_info(self, g):
         print("Number of vertices:", g.vcount())
         print("Number of edges:", g.ecount())
         print("Density of the graph:", 2 * g.ecount() / (g.vcount() * (g.vcount() - 1)))
         n_vertices = g.vcount()
-        degrees = []
+        degrees = {'in': [], 'out': []}
         total = 0
         for n in range(n_vertices):
-            neighbours = g.neighbors(n, mode='ALL')
-            total += len(neighbours)
-            degrees.append(len(neighbours))
+            for mode in ['in', 'out']:
+                neighbours = g.neighbors(n, mode=mode)
+                total += len(neighbours)
+                degrees[mode].append(len(neighbours))
         print("Average degree:", total / n_vertices)
-        print("Maximum degree:", max(degrees))
-        indx_max = degrees.index(max(degrees))
-        print(f"Vertex ID with the maximum degree: {indx_max = } {g.vs[indx_max]['name'] = }")
+        for mode in ['in', 'out']:
+            dm = degrees[mode]
+            print(f"Maximum degree {mode}: {max(dm) = }")
+            indx_max = dm.index(max(dm))
+            print(f"Vertex ID with the maximum degree: {indx_max = } {g.vs[indx_max]['name'] = }")
         cc = g.connected_components(mode='strong')
         print(f"Number of connected components:", len(cc))
         print(f"Size of largest connected component: {cc.giant().vcount() = } {cc.giant().ecount() = }")
+
+    def cluster_labels(self):
+        for partition in [1]:  #, 2, 3, 4, 5]:
+            print(f'{partition = } {len(self.partition_df[partition == self.partition_df.partition]) = }')
+            sources = set(self.partition_df.loc[partition == self.partition_df.partition].source_id.values)
+            temp = self.articles
+            temp['id'] = [w.replace('https://openalex.org/', '') for w in temp.works_id]
+            temp = temp.loc[temp.id.isin(sources), ['display_name', 'cited_by_count', 'publication_year']]
+            print(f'{temp.shape = }')
+            print(temp.sort_values("publication_year").head())
+            print(temp.sort_values("publication_year").tail())
 
     def citation_summary_runner(self):
         self.load_citers()

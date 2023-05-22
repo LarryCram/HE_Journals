@@ -41,7 +41,7 @@ class JournalSummary:
         print(f'for {self.journal = }: with articles {self.article.shape = }\n{self.article.head()}')
 
     def load_authorships_from_journal(self):
-        self.authorship = self.db_journal.read_db(table_name='authorships')
+        self.authorship = self.db_journal.read_db(table_name='authorships').drop(columns='level_0', errors='ignore')
         self.db_journal.to_db(df=self.authorship, table_name='authorships_full_backup')
         self.authorship = self.authorship.loc[:, ['works_id', 'author_id', 'author_display_name',
                                                   'institutions_id', 'institutions_display_name', 'country_code']]
@@ -49,7 +49,8 @@ class JournalSummary:
         self.authorship = self.authorship[[works_id in self.article_list for works_id in self.authorship.works_id]]
         synonyms = self.db_journal.read_db(table_name='synonyms')
         syn_dict = {} | {i: row.author_id_0 for row in synonyms.itertuples() for i in row[3:]}
-        self.authorship['author_id'] = self.authorship['author_id'].map(syn_dict)
+        self.authorship['author_id'] = self.authorship['author_id']\
+            .map(syn_dict).drop(columns='level_0', errors='ignore')
         print(f'for {self.journal = }: '
               f'number of authorships {self.authorship.shape = } '
               f'number of unique authors {self.authorship.author_id.nunique() = }\n{self.authorship.head()}')

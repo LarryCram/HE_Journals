@@ -59,17 +59,19 @@ class FrameMaker(object):
                                                  'international.display_name': self.frame_from_dict,
                                                  'x_concepts': self.frame_from_list_of_dict,
                                                  'display_name_acronyms': self.string_from_embedded_list,
-                                                 'display_name_alternatives': self.string_from_embedded_list
+                                                 'display_name_alternatives': self.string_from_embedded_list,
+                                                 'repositories.host_organization_lineage': self.frame_from_list_of_dict,
+                                                 'roles': self.frame_from_list_of_dict
                                                  },
-
                                 'sources': {'alternate_titles': self.string_from_embedded_list,
                                             'counts_by_year': self.frame_from_list_of_dict,
                                             'ids.issn': self.string_from_embedded_list,
                                             'issn': self.string_from_embedded_list,
                                             'societies': self.frame_from_list_of_dict,
-                                            'x_concepts': self.frame_from_list_of_dict
+                                            'x_concepts': self.frame_from_list_of_dict,
+                                            'alternate_titles': self.string_from_embedded_list,
+                                            'host_organization_lineage': self.string_from_embedded_list
                                             }
-
                                 }
 
     def frame_maker(self, entity=None, filtre=None, select=None, refresh=None):
@@ -130,7 +132,7 @@ class FrameMaker(object):
         self.df = pd.json_normalize(self.response, max_level=1)
         self.df = self.df.rename(columns={'id': self.entity_id})
         self.df = self.df.set_index(self.entity_id)
-        # self.df.info()
+        self.df.info()
         # print(self.df.head())
 
         for col, select in parents.items():
@@ -150,15 +152,17 @@ class FrameMaker(object):
         col_ext = None
         if '.' in col:
             col, col_ext = col.split('.', maxsplit=1)
+            # print(f'{col = } {col_ext = }')
 
         temp = self.df.pop(col).to_frame()
         temp = temp.explode(col).reset_index()
         temp = temp.join(pd.json_normalize(temp[col])).drop(columns=col)
-        if 'id' in temp.columns:
-            temp.columns = [f'{col}_{c}' if self.entity not in c else c for c in temp.columns]
+        # if 'id' in temp.columns:
+        #     temp.columns = [f'{col}_{c}' if self.entity not in c else c for c in temp.columns]
 
         if col_ext:
             if '.' not in col_ext:
+                # print(temp.head())
                 temp = temp.explode(col_ext)
                 temp = temp.join(pd.json_normalize(temp[col_ext])).drop(columns=col_ext)
                 temp = temp.rename(columns={'id': f'{col_ext}_id', 'display_name': f'{col_ext}_display_name'})
@@ -171,6 +175,8 @@ class FrameMaker(object):
                     temp[col_ext] = ['| '.join(v) if isinstance(v, list) else pd.NA for v in temp[col_ext]]
                 temp = temp.drop(columns='col_ext', errors='ignore')
 
+        if 'id' in temp.columns:
+            temp.columns = [f'{col}_{c}' if self.entity not in c else c for c in temp.columns]
         temp.columns = [c.replace('.', '_') for c in temp.columns]
         self.frame_dict[col] = temp
         # print(f'from list of dicts {temp.shape = } {temp.columns = }\n{temp.head()}')
@@ -186,8 +192,8 @@ class FrameMaker(object):
 
     def string_from_embedded_list(self, col=None):
         # print(f'string_from_embedded_list {col = } {self.df[col][0] = }')
-        if '.' in col:
-            col, col_ext = col.split('.', maxsplit=1)
+        # if '.' in col:
+        #     col, col_ext = col.split('.', maxsplit=1)
         # print(f'{col = } {col_ext = }')
         self.df[col] = ['| '.join(d) if isinstance(d, list) else pd.NA for d in self.df[col]]
 
