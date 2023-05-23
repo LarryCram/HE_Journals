@@ -179,8 +179,8 @@ class OeuvreSummary:
             print(f'AUTHOR: {j = } {author = } {oeuvre.shape = }')  #\n{oeuvre.head()}')
             if lst := self.oeuvre_processor(author_id=author, df=oeuvre):
                 oeuvre_list.extend(lst)
-            # if j > 32:
-            #     break
+            if j > 128:
+                break
         oeuvre = pd.DataFrame(oeuvre_list, columns=['author_id', 'works_id',
                                                     'n_authors', 'n_institutions', 'n_countries',
                                                     'authors', 'institutions', 'countries'
@@ -202,15 +202,20 @@ class OeuvreSummary:
             n_authors = group.author_id.nunique()
             n_institutions = group.institutions_id.nunique()
             n_countries = group.country_code.nunique()
-            authors = group.author_display_name.to_list().join('| ')
-            institutions = group.institutions_display_name.to_list().join('| ')
-            countries = group.country_code.to_list().join('| ')
+            authors = self.joiner(group.author_display_name.to_list())
+            institutions = self.joiner(group.institutions_display_name.to_list())
+            countries = self.joiner(group.country_code.to_list())
             # print(f'{n_authors = } {n_institutions = } {n_countries = } {academic_age = }')
             oeuvre_list.append([author_id, works_id, n_authors, n_institutions, n_countries,
                                 authors, institutions, countries,
                                 academic_age, self.career_stage(academic_age)])
             # exit(99)
         return oeuvre_list
+
+    def joiner(self, lst=None):
+        if isinstance(lst, list):
+            return '| '.join([ll for ll in lst if isinstance(ll, str)])
+        return pd.NA
 
     def career_stage(self, academic_age=None):
         if 0 <= academic_age <= 1:
@@ -264,7 +269,7 @@ class OeuvreSummary:
                 merge(author_concepts, left_on=['works_id', 'author_id'], right_on=['works_id', 'author_id'])
             print(concepts_time_series.head())
             self.education_expertise(df=concepts_time_series)
-            if j > 128:
+            if j > 4:
                 break
         expertise = pd.DataFrame(expertise_, columns=['author_id', 'concept', 'score', 'concept_tfidf', 'score_tfidf'])
         print(f'{expertise.shape = }/n{expertise.head(32)}')
@@ -278,12 +283,11 @@ class OeuvreSummary:
         self.load_oeuvre()
         self.oeuvre_corpus_statistics()
         # self.homonym_detection()
-
         # self.synonym_detection_full_name()
 
-        # self.oeuvre_concepts_inverse_doc_freq()
-        # self.oeuvre_concepts_summary()
-        # self.oeuvre_author_processor()
+        self.oeuvre_concepts_inverse_doc_freq()
+        self.oeuvre_concepts_summary()
+        self.oeuvre_author_processor()
 
 
 @time_run

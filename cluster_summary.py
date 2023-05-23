@@ -129,7 +129,6 @@ class ClusterSummary:
             largest_cc_ = len(whole)
             print(f'{final_year = } {largest_cc_ = }')
             for drop_work in set(whole.works_id.unique()):
-            # for drop_work in set(whole.author_id.unique()):
                 largest_cc = len(max(
                     nx.connected_components(nx.from_pandas_edgelist(whole[whole.works_id != drop_work],
                     # nx.connected_components(nx.from_pandas_edgelist(whole[whole.author_id != drop_work],

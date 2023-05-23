@@ -29,21 +29,20 @@ class CitationSummary:
 
     def load_citers(self):
         self.articles = self.db.read_db(table_name='articles')
-        citers = self.db.read_db(table_name='citers_referenced_works')
-        citers = citers[citers.referenced_works.isin(self.articles.works_id)]
+        citers = self.db.read_db(table_name='citers_works')
+        citers = citers[citers.cited_id.isin(self.articles.works_id)]
         self.citers = citers\
             .dropna()\
             .reset_index(drop=True)\
-            .drop(columns='cited_id')\
-            .rename(columns={'referenced_works': 'journal_id', 'works_id': 'cite_id'})
+            .rename(columns={'cited_id': 'journal_id', 'works_id': 'cite_id'})
 
     def load_cited(self):
-        cited = self.db.read_db(table_name='referenced_works')
+        cited = self.db.read_db(table_name='cited_works')
         cited = cited[cited.works_id.isin(self.articles.works_id)]
         self.cited = cited\
             .dropna()\
             .reset_index(drop=True)\
-            .rename(columns={'works_id': 'journal_id', 'referenced_works': 'cite_id'})
+            .rename(columns={'citing_work_id': 'journal_id', 'works_id': 'cite_id'})
 
     def construct_citation_table(self):
         print(self.cited.sort_values('journal_id').head())
@@ -88,11 +87,17 @@ class CitationSummary:
         #                                   # resolution_parameter=0.5)
 
         partition = la.find_partition(h, la.ModularityVertexPartition)
+        # partition = la.find_partition(h, la.RBConfigurationVertexPartition)
+        diff = la.Optimiser().optimise_partition(partition, n_iterations=50)
+        print(f'{diff = }')
+        # partition = la.ModularityVertexPartition(h).renumber_communities()
         p_dict = {k: j for j, p in enumerate(partition) for k in p if isinstance(k, int)}
         df['partition'] = [p_dict[v1] if p_dict.get(v1, False) else p_dict.get(v2, False)
                            for v1, v2 in zip(df.source, df.target)]
         print(f'{df.shape = } {len(p_dict) = }\n{df.head()}')
-        print(f'{df.value_counts("partition").to_frame().reset_index().astype({"partition": int})}')
+        fd = df.value_counts("partition").to_frame().reset_index().astype({"partition": int})
+        fd = fd.reset_index(drop=False).drop(columns='partition').rename(columns={'index': 'partition'})
+        print(f'frequency distribution of partitions:\n{fd}')
         print(f'{df.value_counts("partition").to_frame()["count"].sum() = }')
         self.db.to_db(df=df, table_name='communities')
         self.partition_df = df.reset_index()
@@ -120,16 +125,26 @@ class CitationSummary:
         print(f"Number of connected components:", len(cc))
         print(f"Size of largest connected component: {cc.giant().vcount() = } {cc.giant().ecount() = }")
 
+    def plot_cluster(self, partition=None):
+        partition_df = self.partition_df.loc[partition == self.partition_df.partition]
+        print(partition_df.head())
+        # exit(55)
+
     def cluster_labels(self):
-        for partition in [1]:  #, 2, 3, 4, 5]:
+        for partition in [1, 2, 3, 4, 5]:
             print(f'{partition = } {len(self.partition_df[partition == self.partition_df.partition]) = }')
             sources = set(self.partition_df.loc[partition == self.partition_df.partition].source_id.values)
-            temp = self.articles
-            temp['id'] = [w.replace('https://openalex.org/', '') for w in temp.works_id]
-            temp = temp.loc[temp.id.isin(sources), ['display_name', 'cited_by_count', 'publication_year']]
-            print(f'{temp.shape = }')
-            print(temp.sort_values("publication_year").head())
-            print(temp.sort_values("publication_year").tail())
+            articles = self.articles
+            articles['journal_id'] = [w.replace('https://openalex.org/', '') for w in articles.works_id]
+            articles = articles.loc[articles.works_id.isin(sources), ['works_id', 'display_name', 'cited_by_count', 'publication_year']]
+            cite_dict = dict(zip(self.citation_table.cite_id, self.citation_table.display_name))
+            print(articles.head())
+            print(self.citation_table.head())
+            articles['citer_title'] = articles.works_id.map(cite_dict)
+            print(f'{articles.shape = }')
+            print(articles.sort_values("publication_year").head())
+            print(articles.sort_values("publication_year").tail())
+            self.plot_cluster(partition=partition)
 
     def citation_summary_runner(self):
         self.load_citers()

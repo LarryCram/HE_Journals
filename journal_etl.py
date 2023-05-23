@@ -93,6 +93,8 @@ class ProcessJournal:
                 continue
             table = pd.concat(df_list)
             table_name = f'citers_{name}'
+            table.drop(columns='source_host_organization_lineage', errors='ignore', inplace=True)
+            table.drop(columns='raw_affiliation_strings', errors='ignore', inplace=True)
             print(f'{table_name = } {table.shape = }\n{table.head()}')
             self.db.to_db(df=table, table_name=table_name)
 
@@ -130,6 +132,9 @@ class ProcessJournal:
             table = pd.concat(df_list)
             table_name = f'cited_{name}'
             print(f'{table_name = } {table.shape = }\n{table.head()}')
+            table.info()
+            table.drop(columns='source_host_organization_lineage', errors='ignore', inplace=True)
+            table.drop(columns='raw_affiliation_strings', errors='ignore', inplace=True)
             self.db.to_db(df=table, table_name=table_name)
 
     def process_journal_runner(self):
