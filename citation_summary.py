@@ -27,39 +27,61 @@ class CitationSummary:
             raise SystemExit(f'data directory does not exist {self.data_dir = } {os.getcwd() = }')
         self.db = dbUtil(db_name=f'{self.data_dir}/.db/{journal}')
 
+    def load_articles(self):
+        self.articles = self.db.read_db(table_name='articles').drop(columns='index')
+        print(f'ARTICLES: {self.articles.works_id.nunique() = } {self.articles.shape = }')
+        referenced_works = self.db.read_db(table_name='referenced_works')
+        referenced_works = referenced_works[[w in self.articles.works_id.values for w in referenced_works.works_id]]
+        print(f'REFERENCED WORKS: {referenced_works.works_id.nunique() = } '
+              f'{referenced_works.referenced_works.nunique() = }')
+        for j, works_id in enumerate(self.articles.works_id):
+            if works_id not in referenced_works.works_id.values:
+                print(f'NO REFERENCES: {j = } {works_id = }')
+
     def load_citers(self):
-        self.articles = self.db.read_db(table_name='articles')
         citers = self.db.read_db(table_name='citers_works')
-        citers = citers[citers.cited_id.isin(self.articles.works_id)]
-        self.citers = citers\
+        citers = citers[citers.cited_id.isin(self.articles.works_id.values)]
+        citers = citers\
             .dropna()\
             .reset_index(drop=True)\
             .rename(columns={'cited_id': 'journal_id', 'works_id': 'cite_id'})
+        print(f'CITERS: {citers.shape = } {citers.cite_id.nunique() = } {citers.journal_id.nunique() = }')
+        self.citers = citers
 
     def load_cited(self):
         cited = self.db.read_db(table_name='cited_works')
-        cited = cited[cited.works_id.isin(self.articles.works_id)]
-        self.cited = cited\
-            .dropna()\
+        cited = cited[cited.citing_work_id.isin(self.articles.works_id.values)]
+        cited = cited\
             .reset_index(drop=True)\
             .rename(columns={'citing_work_id': 'journal_id', 'works_id': 'cite_id'})
+        print(f'CITED: {cited.shape = } {cited.cite_id.nunique() = } {cited.journal_id.nunique() = }')
+        for j, works_id in enumerate(self.articles.works_id.values):
+            if works_id not in cited.journal_id.values:
+                print(f'NOT IN ARTICLES WITH CITED WORKS: {j = } {works_id = }')
+        self.cited = cited
 
     def construct_citation_table(self):
         print(self.cited.sort_values('journal_id').head())
         print(self.citers.sort_values('journal_id').head())
         self.citation_table = pd.concat([self.citers, self.cited], axis=0)\
             .drop_duplicates()\
+            .sort_values('journal_id')\
             .replace("https://openalex.org/", "", regex=True)
-            # .sample(frac=0.1)
+        print(self.citation_table.head())
+        print(f'{self.cited.shape = } '
+              f'{self.citers.shape = } '
+              f'{self.citation_table.shape = } '
+              f'{self.citation_table.journal_id.nunique() = }')
 
     def make_citation_graph(self):
         print(f'{self.citation_table.shape = }\n{self.citation_table.sort_values("journal_id").head()}')
-        g = ig.Graph.TupleList(self.citation_table.itertuples(index=False), directed=True, weights=False)
+        g = ig.Graph.TupleList(self.citation_table[['cite_id', 'journal_id']].itertuples(index=False), directed=True, weights=False)
         df = pd.DataFrame([[g.vs[edge.source]['name'], g.vs[edge.target]['name']]
-                          for edge in g.es], columns=['source', 'target'])
+                          for edge in g.es], columns=['cite_id', 'journal_id'])
         print(f'{df.shape = }\n{df.head()}')
         self.graph_info(g)
-        self.components_of_citation_graph(g)
+        # self.components_of_citation_graph(g)
+        exit(11)
 
     def components_of_citation_graph(self, g):
         self.clusters_of_citation_graph(g.connected_components(mode='strong').giant())
@@ -125,32 +147,34 @@ class CitationSummary:
         print(f"Number of connected components:", len(cc))
         print(f"Size of largest connected component: {cc.giant().vcount() = } {cc.giant().ecount() = }")
 
-    def plot_cluster(self, partition=None):
-        partition_df = self.partition_df.loc[partition == self.partition_df.partition]
-        print(partition_df.head())
-        # exit(55)
-
     def cluster_labels(self):
-        for partition in [1, 2, 3, 4, 5]:
+        for partition in [0, 1, 2, 3, 4, 5]:
             print(f'{partition = } {len(self.partition_df[partition == self.partition_df.partition]) = }')
             sources = set(self.partition_df.loc[partition == self.partition_df.partition].source_id.values)
-            articles = self.articles
-            articles['journal_id'] = [w.replace('https://openalex.org/', '') for w in articles.works_id]
-            articles = articles.loc[articles.works_id.isin(sources), ['works_id', 'display_name', 'cited_by_count', 'publication_year']]
-            cite_dict = dict(zip(self.citation_table.cite_id, self.citation_table.display_name))
-            print(articles.head())
-            print(self.citation_table.head())
-            articles['citer_title'] = articles.works_id.map(cite_dict)
+            articles = self.citation_table[self.citation_table.journal_id.isin(sources)].sort_values('publication_year').copy()
             print(f'{articles.shape = }')
-            print(articles.sort_values("publication_year").head())
-            print(articles.sort_values("publication_year").tail())
-            self.plot_cluster(partition=partition)
+            print(articles.head())
+            self.articles['works_id'] = [w.replace('https://openalex.org/', '') for w in self.articles.works_id]
+            cite_dict = dict(zip(self.articles.works_id, self.articles.display_name))
+            year_dict = dict(zip(self.articles.works_id, self.articles.publication_year))
+            articles['cited_title'] = articles.journal_id.map(cite_dict)
+            articles['journal_year'] = articles.journal_id.map(year_dict)
+            cols = ['journal_id', 'cited_title', 'journal_year', 'cite_id', 'display_name', 'publication_year', 'cited_by_count']
+            articles = articles[cols]
+            articles['cited_title'] = [' '.join(t.split(' ')[:8]) for t in articles.cited_title]
+            articles['display_name'] = [' '.join(t.split(' ')[:8]) for t in articles.display_name]
+            articles = articles.sort_values(['cited_title', 'publication_year'])
+            print(f'{articles.shape = }')
+            print(articles.head())
+            print(articles.tail())
+            self.db.to_db(df=articles, table_name=f'partition_{partition}')
 
     def citation_summary_runner(self):
+        self.load_articles()
         self.load_citers()
         self.load_cited()
         self.construct_citation_table()
-        self.make_citation_graph()
+        # self.make_citation_graph()
 
 
 @time_run
