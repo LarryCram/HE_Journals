@@ -5,6 +5,7 @@ import os
 import pandas as pd
 import requests
 import diskcache as dc
+from collections import defaultdict
 
 
 class IOpenalexEtl(metaclass=ABCMeta):
@@ -69,6 +70,7 @@ class OpenalexEtl(IOpenalexEtl):
         return self
 
     def build_extractor(self, refresh=False):
+
         if not refresh:
             self.result = self.cache.get(self.query, default='KEY_NOT_FOUND', read=True)
             if self.result != 'KEY_NOT_FOUND':
@@ -112,8 +114,15 @@ class OpenalexEtl(IOpenalexEtl):
     def build_transformer(self):
         if self.result:
             self.result = self.replace_inverted_index(self.result)
+            # print(f'{len(self.result) = }')
+            # study = defaultdict(list)
+            # for item in self.result:
+            #     study[item.get('id')].append(item.get('publication_year'))
+            # print(study)
             self.extract = pd.json_normalize(self.result, max_level=3)
+            # self.extract.info()
             self.extract.columns = [c.replace('.', '_') for c in self.extract.columns]
+            # exit(55)
         return self
 
     def build_loader(self, load_dataframe=None):
