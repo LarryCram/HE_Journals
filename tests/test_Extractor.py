@@ -1,4 +1,4 @@
-from openalexextract.Extractor import Extractor
+from openalexextract.AARCHIVE.Extractor import Extractor
 
 ex = Extractor()
 query = r"https://api.openalex.org/works/W1775749144"

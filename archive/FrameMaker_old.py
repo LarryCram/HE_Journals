@@ -2,8 +2,8 @@ import pandas as pd
 from collections import defaultdict
 from benedict import benedict
 
-from openalexextract.QueryMaker import QueryMaker
-from openalexextract.Extractor import Extractor
+from openalexextract.AARCHIVE.QueryMaker import QueryMaker
+from openalexextract.AARCHIVE.Extractor import Extractor
 
 qm = QueryMaker()
 ex = Extractor()

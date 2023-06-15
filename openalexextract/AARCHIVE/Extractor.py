@@ -1,9 +1,8 @@
 import os
 import requests.exceptions
 
-from openalexextract.SetUp import SetUp
+from openalexextract.AARCHIVE.SetUp import SetUp
 from utils.chained_get import chained_get
-from requests_toolbelt.utils import dump
 import diskcache as dc
 import hashlib
 import time

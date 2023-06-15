@@ -1,70 +1,107 @@
-import os
+from abc import ABCMeta, abstractmethod
+import re
 import pandas as pd
+import diskcache as dc
 
-from openalexextract.FrameMaker import FrameMaker
+from openalexextract.openalex_etl import OpenalexEtl
 from utils.dbUtils import dbUtil
 from utils.profile_run import profile_run
 from utils.time_run import time_run
 
+class IProcessJournal(metaclass=ABCMeta):
 
-class ProcessJournal:
+    @classmethod
+    @abstractmethod
+    def extract_works(cls):
+        ...
+
+    @classmethod
+    @abstractmethod
+    def keep_articles(cls):
+        ...
+
+    @classmethod
+    @abstractmethod
+    def extract_cited(cls):
+        ...
+
+    @classmethod
+    @abstractmethod
+    def extract_citers(cls):
+        ...
+
+
+class ProcessJournal(IProcessJournal):
 
     def __init__(self, journal=None, journal_id=None, journal_issn=None):
 
         self.journal = journal
         self.journal_id = journal_id
         self.journal_issn = journal_issn
-        self.fm = FrameMaker()
-        self.data_dir = r'./data'
-        if not os.path.exists(self.data_dir):
-            raise SystemExit(f'data directory does not exist {self.data_dir}')
-        self.db = dbUtil(db_name=f'{self.data_dir}/.db/{journal}')
+        self.works = None
+        self.articles = None
+        self.references = None
+        self.citers = None
+        self.oeuvres = None
+
+        self.oa = OpenalexEtl()
+        self.oa.build_session().build_cache(cache=rf'./data/.cache_from_oa_api/{journal_id}')
+        self.cache_pandas = dc.Cache(rf'./data/.cache_pandas/{journal_id}', size_limit=int(4e9))
+        self.db = dbUtil(f'./data/.db/{journal}')
 
     def extract_works(self):
-        entity = 'works'
-        self.fm.frame_maker(cache_name=f'{entity}_{self.journal_id}',
-                            entity={entity: None},
-                            filtre={'primary_location.source.id': self.journal_id},
-                            refresh=False)
-        print(f'tables: {self.fm.frame_dict.keys() = }')
-        for table_name, table in self.fm.frame_dict.items():
-            print(f'loading works by source: {table_name = } {table.shape = }\n{table.columns}')
-            # table.info()
-            table.drop(columns='source_host_organization_lineage', errors='ignore', inplace=True)
-            table.drop(columns='raw_affiliation_strings', errors='ignore', inplace=True)
-            table.drop(columns='primary_location_source', errors='ignore', inplace=True)
-            self.db.to_db(df=table, table_name=f'{table_name}_by_id')
-            # self.db.to_db(df=table, table_name=f'{table_name}')
+
+        query = f'works?filter=primary_location.source.issn:{self.journal_issn}'
+        self.oa.build_query(query=query).build_extractor(refresh=False).build_transformer()
+        self.works = self.oa.extract.rename(columns={'id': 'works_id'}).drop_duplicates(subset='works_id')
+        self.cache_pandas['works'] = self.works
+        return self
 
     def keep_articles(self):
-        works = self.fm.frame_dict['works'].reset_index()
-        temp = works.loc[:, ['works_id', 'doi', 'display_name',
-                             'abstract', 'biblio_first_page', 'biblio_last_page']]
-        number_of_references = self.fm.frame_dict['referenced_works'].value_counts('works_id').to_dict()
-        temp['reference_count'] = temp.works_id.map(number_of_references)
-        print(f'number_of_references {next(iter(number_of_references)) = }')
-        print(f'works:\n{temp.head()}')
+
+        self.works['reference_count'] = [len(refs) for refs in self.works.referenced_works]
+        print(f'works:\n{self.works.head()}')
+        self.works.info()
+
         mask = []
-        for row in temp.itertuples():
+        for row in self.works.itertuples():
             first, last = (row.biblio_first_page, row.biblio_last_page)
             page_length = 0
             if isinstance(first, str) and isinstance(last, str) and first.isdigit() and last.isdigit():
                 page_length = int(last) - int(first)
-            logic = self.isarticle(page_length, row.abstract,
-                                   number_of_references[row.works_id], row.display_name)
+            logic = self.is_article(page_length, row.abstract, row.display_name)
             if logic:
                 mask.append(True)
             else:
                 mask.append(False)
-        articles = works[mask].copy()
-        self.db.to_db(df=articles, table_name='articles')
-        not_articles = works[~works.index.isin(articles.index.values)]
-        self.db.to_db(df=not_articles, table_name='not_articles')
-        print(f'to database: {articles.shape = } {not_articles.shape = }')
+        self.articles = self.works[mask].copy()
+        self.cache_pandas['articles'] = self.works
+        self.db.to_db(df=self.articles[['works_id', 'title', 'publication_year', 'abstract',
+                                        'biblio_first_page', 'biblio_last_page', 'reference_count']]
+                      , table_name='articles', if_exists='replace')
+        not_articles = self.works[~self.works.index.isin(self.articles.index.values)]
+        self.db.to_db(df=not_articles[['works_id', 'title', 'publication_year', 'abstract',
+                                        'biblio_first_page', 'biblio_last_page', 'reference_count']]
+                      , table_name='not_articles', if_exists='replace')
+        print(f'to database: {self.articles.shape = } {not_articles.shape = }')
+        return self
 
-    def isarticle(self, page_length, abstract, n_references, display_name):
-        if any([term in display_name.lower() for term in
-                             ['book review', 'errata', 'corrigend', 'correction']]):
+    def is_article(self, page_length, abstract, display_name):
+        if any(
+            re.match(f'^{term}[a-z ]*?$', display_name.strip().lower())
+            for term in [
+                'book review',
+                'errata',
+                'corrigend',
+                'correction',
+                'review',
+                'editor',
+                'review articles',
+                'review symposium',
+            ]
+        ):
+            return False
+        if re.match('^editorial: ', display_name.strip().lower()):
             return False
         if page_length > 4:
             return True
@@ -72,87 +109,70 @@ class ProcessJournal:
             return True
         return False
 
-    # def extract_citers(self):
-    #     from collections import defaultdict
-    #     works = self.db.read_db(table_name='articles').loc[:, ['works_id']]
-    #     print(works.head())
-    #     entity = 'works'
-    #     master_dict = defaultdict(list)
-    #     for j, work in enumerate(list(works.works_id)):
-    #         if j % 250 == 0:
-    #             print(f'{j = } -> {j}/{len(list(works.works_id))}')
-    #         self.fm.frame_maker(entity={entity: None},
-    #                             filtre={'cites': work},
-    #                             select=['id', 'doi', 'display_name',
-    #                                     'publication_year', 'type',
-    #                                     'authorships', 'biblio', 'abstract_inverted_index',
-    #                                     'cited_by_count', 'concepts', 'primary_location',
-    #                                     'referenced_works', 'related_works'],
-    #                             refresh=False)
-    #         for name, df in self.fm.frame_dict.items():
-    #             df['article_id'] = work
-    #             master_dict[name].append(df)
-    #
-    #     for table_name, table_list in master_dict.items():
-    #         table = pd.concat(table_list)
-    #         table_name = f'citers_{table_name}'
-    #         table.drop(columns='source_host_organization_lineage', errors='ignore', inplace=True)
-    #         table.drop(columns='raw_affiliation_strings', errors='ignore', inplace=True)
-    #         table.drop(columns='primary_location_source', errors='ignore', inplace=True)
-    #         print(f'loading works by source: {table_name = } {table.shape = }\n{table.columns}')
-    #         self.db.to_db(df=table, table_name=table_name)
+    def extract_citers(self):
 
-    def extract_cited(self):
+        citer_df_list = []
+        for row in self.articles.itertuples():
+            referenced_works = row.referenced_works
+            reference_list = '|'.join(referenced_works[:50])
+            if len(reference_list) < 1:
+                continue
+            query = f'works?filter=ids.openalex:{reference_list}'
+            self.oa.build_query(query=query).build_extractor(refresh=False).build_transformer()
+            self.references = self.oa.extract.rename(columns={'id': 'cited_id'}).drop_duplicates(subset='cited_id')
+            self.references.insert(0, 'works_id', row.works_id)
+            ref_df_list.append(self.references)
+        ref_df = pd.concat(ref_df_list)
+        self.cache_pandas['references'] = ref_df
+        return self
+
         from collections import defaultdict
-        cited = self.db.read_db(table_name='referenced_works')
         works = self.db.read_db(table_name='articles').loc[:, ['works_id']]
-        cited = cited[cited.works_id.isin(works.works_id)]
+        print(works.head())
         entity = 'works'
         master_dict = defaultdict(list)
-        grouped = cited.groupby('works_id')
-        for j, (works_id, group) in enumerate(grouped, start=1):
-            reference_lst = group.referenced_works.values
-            if len(reference_lst) < 50:
-                ref_lst = '|'.join(reference_lst)
-            print(f'{j = } {works_id = } {reference_lst = } {ref_lst = }')
-
-            # if j % 250 == 0:
-            #     print(f'{j = } -> {j}/{len(list(cited.works_id))}')
-            #     continue
-            self.fm.frame_maker(cache_name=f'{entity}_{works_id}_references',
-                                entity={entity: None},
-                                filtre={'openalex': ref_lst},
+        for j, work in enumerate(list(works.works_id)):
+            if j % 250 == 0:
+                print(f'{j = } -> {j}/{len(list(works.works_id))}')
+            self.fm.frame_maker(entity={entity: None},
+                                filtre={'cites': work},
+                                select=['id', 'doi', 'display_name',
+                                        'publication_year', 'type',
+                                        'authorships', 'biblio', 'abstract_inverted_index',
+                                        'cited_by_count', 'concepts', 'primary_location',
+                                        'referenced_works', 'related_works'],
                                 refresh=False)
             for name, df in self.fm.frame_dict.items():
+                df['article_id'] = work
                 master_dict[name].append(df)
-            print(f'{j = } {works_id = }')
-            exit(66)
 
-        for table_name, table_list in master_dict.items():
-            table = pd.concat(table_list)
-            table_name = f'citers_{table_name}'
-            table.drop(columns='source_host_organization_lineage', errors='ignore', inplace=True)
-            table.drop(columns='raw_affiliation_strings', errors='ignore', inplace=True)
-            table.drop(columns='primary_location_source', errors='ignore', inplace=True)
-            print(f'loading works by source: {table_name = } {table.shape = }\n{table.columns}')
-            self.db.to_db(df=table, table_name=table_name)
+    def extract_cited(self):
 
-    def process_journal_runner(self):
-        self.extract_works()
-        # self.keep_articles()
-        # self.extract_cited()
-        # self.extract_citers()
+        ref_df_list = []
+        for row in self.articles.itertuples():
+            referenced_works = row.referenced_works
+            reference_list = '|'.join(referenced_works[:50])
+            if len(reference_list) < 1:
+                continue
+            query = f'works?filter=ids.openalex:{reference_list}'
+            self.oa.build_query(query=query).build_extractor(refresh=False).build_transformer()
+            self.references = self.oa.extract.rename(columns={'id': 'cited_id'}).drop_duplicates(subset='cited_id')
+            self.references.insert(0, 'works_id', row.works_id)
+            ref_df_list.append(self.references)
+        ref_df = pd.concat(ref_df_list)
+        self.cache_pandas['references'] = ref_df
+        return self
 
 
-@time_run
-@profile_run
+# @time_run
+# @profile_run
 def main():
+
     journal = 'HERD'
     journal_id = 'S4210176587'
     journal_issn = '0729-4360'
     pj = ProcessJournal(journal=journal, journal_id=journal_id, journal_issn=journal_issn)
-
-    pj.process_journal_runner()
+    pj.extract_works().keep_articles().extract_cited()
 
 
 if __name__ == '__main__':

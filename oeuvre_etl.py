@@ -2,7 +2,7 @@ import os
 
 import pandas as pd
 
-from openalexextract.FrameMaker import FrameMaker
+from openalexextract.AARCHIVE.FrameMaker import FrameMaker
 from utils.dbUtils import dbUtil
 
 from utils.time_run import time_run

@@ -1,4 +1,4 @@
-from openalexextract.Extractor import Extractor
+from openalexextract.AARCHIVE.Extractor import Extractor
 
 
 class QueryMaker(object):

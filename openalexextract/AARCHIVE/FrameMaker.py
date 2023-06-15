@@ -1,8 +1,8 @@
 import re
 import pandas as pd
 
-from openalexextract.QueryMaker import QueryMaker
-from openalexextract.Extractor import Extractor
+from openalexextract.AARCHIVE.QueryMaker import QueryMaker
+from openalexextract.AARCHIVE.Extractor import Extractor
 
 
 class FrameMaker(object):

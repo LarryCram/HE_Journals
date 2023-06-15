@@ -1,4 +1,4 @@
-from openalexextract.SetUp import SetUp
+from openalexextract.AARCHIVE.SetUp import SetUp
 from diskcache import Cache
 
 su = SetUp()

@@ -1,4 +1,4 @@
-from openalexextract.QueryMaker import QueryMaker
+from openalexextract.AARCHIVE.QueryMaker import QueryMaker
 
 qm = QueryMaker()
 
