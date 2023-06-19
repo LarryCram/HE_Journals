@@ -55,8 +55,8 @@ class ProcessJournal(IProcessJournal):
         self.oeuvres = None
 
         self.oa = OpenalexEtl()
-        self.oa.build_session().build_cache(cache=rf'./data/.cache_from_oa_api/{journal_id}')
-        self.cache_pandas = dc.Cache(rf'./data/.cache_pandas/{journal_id}', size_limit=int(4e9))
+        self.oa.build_session().build_cache(cache=rf'./data/.cache_from_oa_api/{journal}')
+        self.cache_pandas = dc.Cache(rf'./data/.cache_pandas/{journal}', size_limit=int(4e9))
         self.db = dbUtil(f'./data/.db/{journal}')
 
     def build_chain(self, query=None, refresh=None):
@@ -73,8 +73,11 @@ class ProcessJournal(IProcessJournal):
     def remove_duplicates(self):
         self.works = self.works.sort_values('publication_year').drop_duplicates(subset='works_id', keep='last')
         for row in self.works.itertuples(index=True):
-            temp_title = re.sub(f'[{string.punctuation}]', '', row.display_name)
-            self.works.at[row.Index, 'temp_title'] = ' '.join(x.lower() for x in temp_title.split(' '))
+            if isinstance(row.display_name, str):
+                temp_title = re.sub(f'[{string.punctuation}]', '', row.display_name)
+                self.works.at[row.Index, 'temp_title'] = ' '.join(x.lower() for x in temp_title.split(' '))
+            else:
+                self.works.at[row.Index, 'temp_title'] = row.display_name
         print(self.works[['works_id', 'display_name', 'temp_title']])
         print(f'{self.works.shape = }')
         self.works = self.works.drop_duplicates(subset='temp_title', keep='last')
@@ -111,7 +114,7 @@ class ProcessJournal(IProcessJournal):
         return
 
     def is_article(self, page_length, abstract, display_name):
-        if any(
+        if not isinstance(display_name, type(None)) and any(
             re.match(f'^{term}[a-z ]*?$', display_name.strip().lower())
             for term in [
                 'book review',
@@ -125,7 +128,7 @@ class ProcessJournal(IProcessJournal):
             ]
         ):
             return False
-        if re.match('^editorial: ', display_name.strip().lower()):
+        if not isinstance(display_name, type(None)) and re.match('^editorial: ', display_name.strip().lower()):
             return False
         if page_length > 4:
             return True
@@ -154,28 +157,40 @@ class ProcessJournal(IProcessJournal):
         ref_df_list = []
         for row in self.articles.itertuples():
             referenced_works = row.referenced_works
-            reference_list = '|'.join(referenced_works[:50])
-            if len(reference_list) < 1:
-                continue
-            query = f'works?filter=ids.openalex:{reference_list}'
-            self.build_chain(query=query, refresh=self.refresh)
-            self.references = self.oa.extract.rename(columns={'id': 'cited_id'}).drop_duplicates(subset='cited_id')
-            self.references.insert(0, 'works_id', row.works_id)
-            ref_df_list.append(self.references)
+            for block in range(0, len(referenced_works), 50):
+                start = block
+                end = min(block+50, len(referenced_works))
+                if block >= 50:
+                    print(f'length of referenced_works requires iterations {block = } {start = } {end = }')
+                reference_list = '|'.join(referenced_works[start:end])
+                if len(reference_list) < 1:
+                    continue
+                query = f'works?filter=ids.openalex:{reference_list}'
+                self.build_chain(query=query, refresh=self.refresh)
+                self.references = self.oa.extract.rename(columns={'id': 'cited_id'}).drop_duplicates(subset='cited_id')
+                self.references.insert(0, 'works_id', row.works_id)
+                ref_df_list.append(self.references)
         ref_df = pd.concat(ref_df_list)
         self.cache_pandas['references'] = ref_df
         return self
 
 
-# @time_run
-# @profile_run
+@time_run
 def main():
 
-    journal = 'HERD'
-    journal_id = 'S4210176587'
-    journal_issn = '0729-4360'
-    pj = ProcessJournal(journal=journal, journal_id=journal_id, journal_issn=journal_issn)
-    pj.extract_works().keep_articles().extract_cited().extract_citers()
+    for j in [2, 3]:
+        if j == 1:
+            # herd
+            journal, journal_id, journal_issn = 'HERD', 'S4210176587', '0729-4360'
+        elif j == 2:
+            # solar physics
+            journal, journal_id, journal_issn = 'SolarPhysics', 'S39223014', '0038-0938'
+        elif j == 3:
+            # scientometrics
+            journal, journal_id, journal_issn = 'Scientometrics', 'S148561398', '0138-9130'
+
+        pj = ProcessJournal(journal=journal, journal_id=journal_id, journal_issn=journal_issn)
+        pj.extract_works().keep_articles().extract_cited().extract_citers()
 
 
 if __name__ == '__main__':

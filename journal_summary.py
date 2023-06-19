@@ -4,6 +4,7 @@ from utils.dataFileManager import DataFileManager
 
 import pandas as pd
 import matplotlib.pyplot as plt
+import diskcache as dc
 import scienceplots
 
 
@@ -15,22 +16,26 @@ class JournalSummary:
         self.reference = None
         self.article_list = None
         self.authorship = None
-        self.article = None
+        self.articles = None
         self.journal = journal
-        self.dfm = DataFileManager()
-        project_data_folder = self.dfm.data_dir
-        self.db_folder = rf'{project_data_folder}\.db'
-        self.db_core = dbUtil(rf'{self.db_folder}\core')
-        self.db_journal = dbUtil(db_name=rf'{self.db_folder}\{journal}')
-        print(f'opened core.db db in {self.db_core}')
+        self.cache_pandas = dc.Cache(rf'./data/.cache_pandas/{self.journal}', size_limit=int(4e9))
+        self.db_core = dbUtil(r'./data/.db/core')
 
-    def load_journal_from_db(self):
-        self.load_article_from_journal()
-        self.load_authorships_from_journal()
-        self.load_references_from_journal()
-        self.load_altmetrics_from_journal()
+    def load_journal(self):
+        self.articles = self.cache_pandas['articles']
+        self.load_authorships()
+        exit(22)
+        # self.authorships
+        # self.references
+        self.altmetrics = self.cache_pandas['altmetrics']
         self.full = self.article.merge(self.authorship, on='works_id').\
             merge(self.reference, on='works_id').merge(self.altmetric, on='doi')
+        print(self.article.head())
+
+
+    def load_authorships(self):
+        authorships = self.articles['authorships']
+        print(authorships.head())
 
     def load_article_from_journal(self):
         self.article = self.db_journal.read_db(table_name='articles') \
@@ -154,17 +159,13 @@ class JournalSummary:
         plt.close(fig)
         return
 
-    def journal_summary_runner(self):
-        self.load_journal_from_db()
-        self.time_series_runner()
-
 
 @time_run
 # @profile_run
 def main():
 
     js = JournalSummary(journal='HERD')
-    js.journal_summary_runner()
+    js.load_journal()
 
 
 if __name__ == '__main__':

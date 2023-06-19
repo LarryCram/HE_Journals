@@ -9,9 +9,6 @@ from collections import defaultdict
 
 
 class IOpenalexEtl(metaclass=ABCMeta):
-    """
-    interface to ExtractByTitle
-    """
 
     @staticmethod
     @abstractmethod
