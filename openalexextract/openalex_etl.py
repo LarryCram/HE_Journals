@@ -2,6 +2,7 @@ from abc import ABCMeta, abstractmethod
 
 import re
 import os
+import time
 import pandas as pd
 import requests
 import diskcache as dc
@@ -87,9 +88,10 @@ class OpenalexEtl(IOpenalexEtl):
         next_cursor = "*"
         self.result = []
         while next_cursor:
+            time.sleep(0.2)
             response = self.session.get(f'{query}&cursor={next_cursor}')
             if response.status_code not in [200, ]:
-                err = rf'session.get error {response.status_code = } {self.query = }'
+                err = rf'session.get error {response.status_code = } {self.query = } {response.request.url = }'
                 raise RuntimeError(err)
             response = response.json()
             # combine group_by, list or single entity responses differently
@@ -103,7 +105,7 @@ class OpenalexEtl(IOpenalexEtl):
             count = int(response['meta']['count'])
             next_cursor = response['meta']['next_cursor']
             not_done = count - len(self.result)
-            # print(f'{count = } {not_done = } {next_cursor = }')
+            print(f'{count = } {not_done = } {next_cursor = }')
             if count == -1 or not_done <= 1 or not next_cursor:
                 break
         return self
