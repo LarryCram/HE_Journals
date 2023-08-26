@@ -12,6 +12,7 @@ pd.set_option('display.max_columns', 99)  # or 1000
 pd.set_option('display.max_rows', 99)  # or 1000
 pd.set_option('display.max_colwidth', 48)  # or 199
 
+
 class IProcessJournal(metaclass=ABCMeta):
 
     @classmethod
