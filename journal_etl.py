@@ -105,8 +105,8 @@ class ProcessJournal(IProcessJournal):
 
     def check_articles(self):
         self.db.to_db(df=self.articles[['works_id', 'title', 'publication_year', 'abstract',
-                                        'biblio_volume', 'biblio_first_page', 'biblio_last_page', 'reference_count']]
-                      , table_name='articles', if_exists='replace')
+                                        'biblio_volume', 'biblio_first_page', 'biblio_last_page', 'reference_count']],
+                      table_name='articles', if_exists='replace')
         not_articles = self.works[~self.works.index.isin(self.articles.index.values)]
         self.db.to_db(df=not_articles[['works_id', 'title', 'publication_year', 'abstract',
                                         'biblio_volume', 'biblio_first_page', 'biblio_last_page', 'reference_count']]
@@ -131,11 +131,7 @@ class ProcessJournal(IProcessJournal):
             return False
         if not isinstance(display_name, type(None)) and re.match('^editorial: ', display_name.strip().lower()):
             return False
-        if page_length > 4:
-            return True
-        if isinstance(abstract, str):
-            return True
-        return False
+        return True if page_length > 4 else isinstance(abstract, str)
 
     def extract_citers(self):
 
@@ -191,7 +187,7 @@ def main():
             # scientometrics
             journal, journal_id, journal_issn = 'Scientometrics', 'S148561398', '0138-9130'
 
-        pj = ProcessJournal(journal=journal, journal_id=journal_id, journal_issn=journal_issn)
+        pj = ProcessJournal(journal=journal, journal_id=journal_id, journal_issn=journal_issn, refresh=False)
         pj.extract_works().keep_articles().extract_cited().extract_citers()
 
 
