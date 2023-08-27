@@ -164,7 +164,7 @@ class ProcessJournal(IProcessJournal):
                 if block >= 50:
                     print(f'length of referenced_works requires iterations {block = } {start = } {end = }')
                 reference_list = '|'.join(referenced_works[start:end])
-                if len(reference_list) < 1:
+                if not reference_list:
                     continue
                 query = f'works?filter=ids.openalex:{reference_list}'
                 self.build_chain(query=query, refresh=self.refresh)
@@ -179,6 +179,7 @@ class ProcessJournal(IProcessJournal):
 @time_run
 def main():
 
+    journal, journal_id, journal_issn = '', '', ''
     for j in [2, 3]:
         if j == 1:
             # herd
