@@ -1,2 +1,2 @@
-# OpenResearchEvaluation
-Python project to explore open research evalutation
+# HE Journals
+Python project to explore HE research
