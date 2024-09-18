@@ -33,7 +33,8 @@ class OpenalexCore(IOpenalexCore):
 
     def core_extractor(self, entity=None):
 
-        root = Path(f'{Path.cwd()}/data/openalex-snapshot/{entity}')
+        root = Path(f'../openalex-snapshot/{entity}')
+        print(f'path to openalex-snapshot {root = } {Path(root).exists() = }')
         f_list = list(root.glob('updated*/*.gz'))
         hold = []
         for f in f_list:
