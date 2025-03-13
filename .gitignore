@@ -3,3 +3,4 @@ data
 docs
 tests
 .idea
+.venv

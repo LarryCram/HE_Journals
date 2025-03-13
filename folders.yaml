@@ -1,0 +1,17 @@
+# snapshot_original: 'home/lc/s/openalex_dec24/snapshot'
+# snapshot_duckdb: '/home/lc/s/openalex_dec24/duckdb'
+# working_duckdb: '/home/lc/s/working'
+# temp_duckdb: '/home/lc/s/.tmp'
+# project: 'ERA'
+
+snapshot_original: 'home/lc/m/openalex_dec24/snapshot'
+snapshot_duckdb: '/home/lc/m/openalex_dec24/duckdb'
+working_duckdb: '/home/lc/m/working'
+temp_duckdb: '/home/lc/m/.tmp'
+project: 'ERA'
+
+# snapshot_duckdb: 'd:/openalex_sept24/duckdb'
+# snapshot_original: 'd/openalex_sept24/snapshot'
+# working_duckdb: 'd:/working'
+# temp_duckdb: 'c:\.tmp'
+# project: 'ERA'
